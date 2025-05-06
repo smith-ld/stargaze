@@ -1,10 +1,8 @@
 from typing import List
-import numpy as np
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.preprocessing import LabelEncoder
 import spacy
 from spacy.tokens import Doc
-from spacy.tokenizer import Tokenizer
 from rnn import *
 from collections import deque
 
@@ -13,7 +11,7 @@ def get_corpus_raw(filename: str) -> List[str]:
         return f.read().splitlines()
 
 
-def load_corpus(corpus_text: List[str]) -> List[Doc]:
+def load_corpus(corpus_text: List[str], nlp) -> List[Doc]:
     # returns docs
     docs = []
     for text in corpus_text:
@@ -34,16 +32,16 @@ def organize_prepped_data(prepped_data):
     return x, y
 
 
-def prep_data_for_model(corpus: List[Doc], label_encoder: LabelEncoder, pos_encoder: DictVectorizer, min_dim):
+def prep_data_for_model(corpus: List[Doc], label_encoder: LabelEncoder, pos_encoder: DictVectorizer, min_dim, nlp):
     prepped_data = []
-    # x = [ token | pos - 1]        y = [token + 1 label]
+    # x = [ token | pos - 1 | ...]        y = [token + 1 label]
     doc_count = 0
     for doc in corpus:
         if doc_count % 10 == 0:
             print(".", end='')
         if doc_count % 100 == 0:
             print("")  # create new line
-        prep_doc_for_model(doc, label_encoder, pos_encoder, prepped_data, min_dim)
+        prep_doc_for_model(doc, label_encoder, pos_encoder, prepped_data, min_dim, nlp)
         doc_count += 1
 
     return organize_prepped_data(prepped_data)
@@ -56,10 +54,10 @@ def make_timesteps(x, num_steps):
     steps = np.array(nptimesteps)
     return steps
 
-def prep_doc_for_model(doc, label_encoder, pos_encoder, prepped_data, min_dim):
+def prep_doc_for_model(doc, label_encoder, pos_encoder, prepped_data, min_dim, nlp):
     # maybe add queue and pop left, add right
     # add tokens as <S>'s
-    queue = fill_prev_pos_queue(min_dim)
+    queue = fill_prev_pos_queue(min_dim, nlp)
 
     for tkn_idx in range(1, len(doc) - 1):
         # refactor to get observation vector as inputting tokens
@@ -71,7 +69,7 @@ def prep_doc_for_model(doc, label_encoder, pos_encoder, prepped_data, min_dim):
         queue.append(doc[tkn_idx])
 
 
-def fill_prev_pos_queue(min_dim):
+def fill_prev_pos_queue(min_dim, nlp):
     queue = deque([])
     s_token = nlp("<S>")[0]
     for i in range(min_dim):
@@ -124,7 +122,7 @@ def is_input_lt_10(input_doc: Doc) -> bool:
     return len(input_doc) < 10
 
 
-def fill_input_to_10(input_doc: Doc):
+def fill_input_to_10(input_doc: Doc, nlp):
     num_tokens_deficient = 10 - len(input_doc)
     start_sequence = " ".join(["<S>" for i in range(num_tokens_deficient)])
     input_text = input_doc.text
@@ -132,39 +130,15 @@ def fill_input_to_10(input_doc: Doc):
     return nlp(input_sequence)
 
 
-nlp = spacy.load("en_core_web_sm")
-
-corpus = get_corpus_raw("StardewContentsSmall.txt")
-corpus_as_docs = load_corpus(corpus)
-
-print("Embedding corpus", end='')
-label_encoder, pos_encoder = embed_corpus(corpus_as_docs)
-print("\n")
-
-print("Preparing data for model", end='')
-x, y = prep_data_for_model(corpus_as_docs, label_encoder, pos_encoder, 10)
-x = make_timesteps(x, 10)
-# get rid fo last 10 because I shifted time steps to fit the model
-# might be able to change this later
-y = y[-(len(y) -10):]
-print("\n")
-
-print(x.shape, y.shape)
-n_dims = x.shape[2]
-
-# x = x.reshape((x.shape[0], 5, x.shape[1]))
-vocab_size = len(label_encoder.classes_)
-model = create_model(n_dims, vocab_size)
-model = train(model, x, y.squeeze())
-model.save("model.keras")
 
 
 
 
-def predict_tokens(input_text, starting_token, xdata, num_timesteps, queue):
+def predict_tokens(input_text, starting_token, xdata, num_timesteps, queue, model, pos_encoder, label_encoder, n_dims, nlp):
     predictions = []
     output = []
     prev_token = starting_token
+
     for i in range(20):
         # create 20 new tokens,
         # 111 is num that spacy created, will change on trained text
@@ -199,10 +173,10 @@ def predict_tokens(input_text, starting_token, xdata, num_timesteps, queue):
     return predictions, output
 
 
-def get_input_and_prep_for_model():
+def get_input_and_prep_for_model(pos_encoder, nlp):
     input_text = "What is the maximum number of health points needed everyday"  # todo what is len < 10?
-    docs = load_corpus([input_text])
-    queue = fill_prev_pos_queue(10)
+    docs = load_corpus([input_text], nlp)
+    queue = fill_prev_pos_queue(10, nlp)
 
     xdata = []
     for tkn_idx in range(len(docs[0])):
@@ -221,8 +195,3 @@ def get_input_and_prep_for_model():
     return xdata, last_token, num_timesteps, input_text, queue
 
 
-xdata, last_token, num_timesteps, input_text, queue = get_input_and_prep_for_model()
-predictions, output = predict_tokens(input_text, last_token, xdata, num_timesteps, queue)
-
-print(predictions)
-print(" ".join(output))

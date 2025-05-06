@@ -63,4 +63,6 @@ is a timestep. I adjusted the model to account for a 3d input.
   - After some research, I found that it would be the previous tokens, so I adjusted
   the model to be an input of (1, # timesteps, # features). 
 
-
+# Next steps
+- Use the `gensim` model. This contains a Word2Vec implementation that I could've used
+To get token vectors. 

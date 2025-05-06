@@ -149,30 +149,24 @@ def load_file_contents(filename: str) -> list[str]:
     return contents
 
 
-if __name__ == "__main__":
+
+def parse_wiki(filename, max_docs):
     tld = "https://stardewvalleywiki.com"
     mainurl = "https://stardewvalleywiki.com/Stardew_Valley_Wiki"
-    filename = "StardewContents.txt"
     main_page_links = get_page_links(tld)
     page_queue = Queue()
     for page_url in main_page_links:
         page_queue.put(page_url)
 
-    print(main_page_links)
     count = 0
-    # while not page_queue.empty():
     corpus = []
-    while not page_queue.empty():
+    while not page_queue.empty() and count < max_docs:
         link = page_queue.get()
         seen_links.add(link)
-        # print(new_links)
-        # term_term_matrix = pd.DataFrame()
         text = get_text(link)  # long string
         text = remove_newlines(text)
 
         save_to_file(filename, text)
-        # doc = get_page_tokens(text)  # spacy doc
-        # corpus.extend([token.text for token in doc])   # just words
         pages = get_page_links(link)
         unseen_pages = get_unseen_pages(pages)
         for unseen_page in unseen_pages:
@@ -183,6 +177,9 @@ if __name__ == "__main__":
             print(".", end='')
             if count % 100 == 0:
                 print(f"Queue Size {page_queue.qsize()}")
+
+
+if __name__ == "__main__":
 
     # model = gensim.models.Word2Vec([corpus], vector_size=100, window=5, min_count=1, workers=4)
     # print(model.wv['Stardew'])
