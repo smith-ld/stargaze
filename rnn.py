@@ -19,13 +19,12 @@ def create_model(n_dims, vocab_size):
     return model
 
 
-
-def train(model: keras.Sequential, xtrain: np.ndarray, ytrain: np.ndarray):
+def train(model: keras.Sequential, xtrain: np.ndarray, ytrain: np.ndarray, *, epochs: int = 10):
     model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
     model.summary()
     print(xtrain.shape, ytrain.shape)
     # xtrain.shape[1] == num dims for predictions
-    model.fit(xtrain, ytrain, epochs=20, batch_size=32)
+    model.fit(xtrain, ytrain, epochs=epochs, batch_size=32)
     return model
 
 

@@ -70,6 +70,7 @@ def prep_doc_for_model(doc, label_encoder, pos_encoder, prepped_data, min_dim, n
 
 
 def fill_prev_pos_queue(min_dim, nlp):
+    # if there are less than 10 tokens, fill to match 10
     queue = deque([])
     s_token = nlp("<S>")[0]
     for i in range(min_dim):
@@ -78,6 +79,7 @@ def fill_prev_pos_queue(min_dim, nlp):
 
 
 def create_x_observation_vector(pos_encoder, curr_token, prev_token, queue):
+
     token_embedded = curr_token.vector
     pos_m_1_embedded = pos_encoder.transform({prev_token.pos_: 1})[0]
     queue_pos = []
@@ -97,6 +99,7 @@ def create_y_label(doc, label_encoder, tkn_idx):
 def create_label_encoder(corpus: List[Doc]) -> LabelEncoder:
     # for each document, get word and add to labels for output
     label_encoder = LabelEncoder()
+    # create labels and fit accordingly
     labels = {""}
     for doc in corpus:
         for token in doc:
@@ -109,6 +112,7 @@ def create_pos_label_encoder(corpus: List[Doc]) -> DictVectorizer:
     pos_encoder = DictVectorizer(sparse=False)
     pos_label_dicts = []
     poses = {"<S>"}
+    # save every part of speech
     for doc in corpus:
         for token in doc:
             poses.add(token.pos_)
@@ -124,12 +128,8 @@ def is_input_lt_10(input_doc: Doc) -> bool:
 
 def fill_input_to_10(input_doc: Doc, nlp):
     num_tokens_deficient = 10 - len(input_doc)
-    start_sequence = " ".join(["<S>" for i in range(num_tokens_deficient)])
-    input_text = input_doc.text
-    input_sequence = start_sequence + input_text
-    return nlp(input_sequence)
-
-
+    vector_fill = nlp(" ")[0]
+    return [vector_fill] * num_tokens_deficient
 
 
 
@@ -145,40 +145,41 @@ def predict_tokens(input_text, starting_token, xdata, num_timesteps, queue, mode
         # xdata = xdata[-num_timesteps:].reshape(xdata.shape[0], num_timesteps, 1)
         # get best one
         # print("---")
-        timestep_predictions = model.predict(xdata)
+        timestep_predictions = model.predict(xdata, verbose=0)
         y_pred = np.argmax(timestep_predictions[len(timestep_predictions) - 1:])  # get last timestep argmax prediction
         predictions.append(y_pred)
         # get ypred to word i.e. reverse engineer it
         word = label_encoder.inverse_transform([y_pred])[0]
-        # print(f"<<:{word}:>>")
-        # if str(word) == "":
-        #     xdata[:, 9:, :] += np.random.normal(-0.001, 0.001, size=(1, 1, xdata.shape[2]))
-        #     continue
+
         input_text += f" {str(word)}"
         token = nlp(input_text)[-1]
         # make word into vec
         x = create_x_observation_vector(pos_encoder, token, prev_token, queue)
-        # token_embedded = token.vector
-        # pos_m_1_embedded = pos_encoder.transform({prev_token.pos_: 1})[0]
-        # x = np.concatenate([token_embedded, pos_m_1_embedded]).reshape(1, 1, n_dims)
         x = x.reshape(1, 1, n_dims)
+        # organize to the proper dimensions for input
         xdata = np.concatenate([xdata, x], axis=1)[:, -num_timesteps:, :]
         prev_token = token
         output.append(token.text)
         queue.popleft()
         queue.append(token)
-        # get pos
 
-        # append to xdata
     return predictions, output
 
 
-def get_input_and_prep_for_model(pos_encoder, nlp):
-    input_text = "What is the maximum number of health points needed everyday"  # todo what is len < 10?
+def get_input_and_prep_for_model(pos_encoder, nlp, input_text):
     docs = load_corpus([input_text], nlp)
     queue = fill_prev_pos_queue(10, nlp)
-
     xdata = []
+    # if input is less than 10 tokens then fill it to 10
+    if is_input_lt_10(docs[0]):
+        prev_token = nlp(" ")[0]
+        fill_tokens = fill_input_to_10(docs[0], nlp)
+        for i in range(len(fill_tokens)):
+            x = create_x_observation_vector(pos_encoder, fill_tokens[i], prev_token, queue)
+            xdata.append(x)
+            prev_token = fill_tokens[i]
+
+    # for each token in the input, prompt
     for tkn_idx in range(len(docs[0])):
         x = create_x_observation_vector(pos_encoder, docs[0][tkn_idx], docs[0][tkn_idx - 1], queue)
         xdata.append(x)
@@ -186,11 +187,11 @@ def get_input_and_prep_for_model(pos_encoder, nlp):
         queue.append(docs[0][tkn_idx])
 
     xdata = np.vstack(xdata)
-    print(xdata.shape)
     # number of rows
     num_timesteps = xdata.shape[0]
     last_token = docs[0][-1]
     num_timesteps = 10
+    # reshape to fit the model's inputs
     xdata = xdata[-num_timesteps:].reshape(1, num_timesteps, xdata.shape[1])
     return xdata, last_token, num_timesteps, input_text, queue
 
